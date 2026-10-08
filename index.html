@@ -316,9 +316,10 @@ function longDate(s){const d=fromIso(s);return d?`${DIA[d.getDay()]} ${d.getDate
 function nights(){const a=fromIso(state.in),b=fromIso(state.out);if(!a||!b)return null;return Math.round((b-a)/86400000)}
 
 /* ---------- Lectura de la solicitud ---------- */
+function isName(t){const up=t===t.toUpperCase()||t.split(/\s+/).every(w=>/^[A-ZÁÉÍÓÚÑÜ]/.test(w));return up&&/^[a-zA-ZáéíóúÁÉÍÓÚñÑüÜ'.\s]+$/.test(t)&&t.split(/\s+/).length>=2&&t.length<60}
 function parseRequest(text){
-  const lines=text.split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
-  const out={hotel:"",guests:[],in:"",out:"",meal:"",room:"",cat:"",extras:[]};
+  const lines=text.split(/\r?\n/).map(l=>l.trim().replace(/^[*\-•·▪►✓]+\s*/,"").replace(/^\d{1,2}[.)]\s+/,"").trim()).filter(Boolean);
+  const out={hotel:"",guests:[],in:"",out:"",meal:"",room:"",cat:"",extras:[],shared:false};
   let cur=null; const ensure=()=>{if(!cur){cur={nombre:"",ci:"",tel:""};out.guests.push(cur)}return cur};
   for(const line of lines){
     const low=norm(line); let r;
@@ -343,6 +344,13 @@ function parseRequest(text){
       if(isPhone){ if(g.tel){cur=null;ensure().tel=line.replace(/^[^\d+]*/,"")} else g.tel=line.replace(/^[^\d+]*/,"") }
       else { if(g.ci){cur=null;ensure().ci=line.replace(/^[^\dVvEe]*/,"")} else g.ci=line.replace(/^(c\.?i\.?|c[eé]dula)\s*:?\s*/i,"") }
       continue;
+    }
+    if(/[+\/&,]|\s+y\s+/i.test(line)){
+      const parts=line.split(/\s*(?:\+|\/|&|,|\s+y\s+)\s*/i).map(x=>x.trim()).filter(Boolean);
+      if(parts.length>1&&parts.every(isName)){
+        parts.forEach(x=>{cur={nombre:x.replace(/\s+/g," ").toUpperCase(),ci:"",tel:""};out.guests.push(cur)});
+        out.shared=true; continue;
+      }
     }
     const looksName=line===line.toUpperCase()||line.split(/\s+/).every(w=>/^[A-ZÁÉÍÓÚÑÜ]/.test(w));
     if(looksName && /^[a-zA-ZáéíóúÁÉÍÓÚñÑüÜ'.\s]+$/.test(line) && line.split(/\s+/).length>=2 && line.length<60){
@@ -423,12 +431,13 @@ $("btnParse").onclick=()=>{
   const h=p.hotel?findHotel(p.hotel):null;
   const obs=[];
   state={...blank(),agent:state.agent,tpl:state.tpl,meal:mealPlan(p.meal),hotel:h?h.nombre:p.hotel,addr:h?h.direccion||"":"",
-    mode:state.mode,guests:p.guests.length?p.guests:[blankGuest()],in:p.in,out:p.out,room:p.room,cat:p.cat,obs:obs.join("\n")};
+    mode:p.shared?"together":"separate",guests:p.guests.length?p.guests:[blankGuest()],in:p.in,out:p.out,room:p.room,cat:p.cat,obs:obs.join("\n")};
   fillForm();
   const missing=[];
   if(!state.hotel)missing.push("hotel"); if(!state.guests[0].nombre)missing.push("nombre del huésped");
   if(!state.in)missing.push("check-in"); if(!state.out)missing.push("check-out");
-  const extra=" Comidas: "+state.meal+". Completa localizador, categoría y habitación."+(state.guests.length>1?` Detecté ${state.guests.length} huéspedes.`:"");
+  const falt=[["localizador",state.loc],["categoría",state.cat],["habitación",state.room]].filter(x=>!x[1]).map(x=>x[0]);
+  const extra=" Comidas: "+state.meal+"."+(falt.length?" Completa: "+falt.join(", ")+".":"")+(state.guests.length>1?(p.shared?` ${state.guests.length} huéspedes en la misma habitación: un solo soporte.`:` Detecté ${state.guests.length} huéspedes: un soporte para cada uno.`):"");
   const amb=state.hotel&&!state.addr?hotelMatches(state.hotel):[];
   if(amb.length>1){note.className="note warn";note.textContent=`Hay ${amb.length} hoteles con ese nombre: ${amb.map(h=>h.nombre).join(", ")}. Toca “Usar” en el que corresponda, en el directorio de abajo.`+extra;$("dirFilter").value=state.hotel.replace(/^\s*hotel\s+/i,"");renderDirectory()}
   else if(state.hotel && !state.addr){note.className="note warn";note.textContent=`No tengo la dirección de ${state.hotel}. Toca “Buscar dirección en Google Maps”, copia la dirección y pégala en "Dirección del hotel"; quedará guardada.`+(missing.length?` Falta: ${missing.join(", ")}.`:"")+extra;$("fAddr").focus()}
