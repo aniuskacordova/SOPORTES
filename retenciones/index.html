@@ -1,0 +1,605 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#165378">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Retenciones">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="../icon-192.png">
+<link rel="icon" href="../icon-192.png">
+<style>
+:root { color-scheme: light dark; padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+body { margin: 0; font: 14px system-ui, sans-serif; -webkit-text-size-adjust: 100%; }
+img { max-width: 100%; }
+</style>
+<title>Calculadora de Retenciones</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+/* Layout: One Way brand band on top, then two panes — form left, comprobante-style result right; stacks on phones */
+:root {
+  --bg: #f2f6f9;
+  --surface: #ffffff;
+  --ink: #1b2b3a;
+  --muted: #5e6b7d;
+  --line: #d5dde6;
+  --accent: #165378;
+  --accent-ink: #ffffff;
+  --sky: #86d0ef;
+  --tan: #d6ad83;
+  --soft: #cfe6f4;
+  --tan-soft: #f1e0cc;
+  --pay: #165378;
+  --pay-ink: #ffffff;
+  --warn: #b25e00;
+  --warn-bg: #fbecd9;
+  --ok: #1e8a5a;
+  --ok-bg: #dcf1e6;
+  --display: "Montserrat", "Segoe UI", Arial, sans-serif;
+  --body: "Montserrat", "Segoe UI", Arial, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1724; --surface: #172234; --ink: #e7edf5; --muted: #9aa8ba; --line: #2a3a52;
+    --accent: #86d0ef; --accent-ink: #0f1724; --soft: #1f3448; --tan-soft: #3a2f24;
+    --pay: #86d0ef; --pay-ink: #0f1724; --warn: #f0a44b; --warn-bg: #3a2c12; --ok: #4fc28c; --ok-bg: #173225; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1724; --surface: #172234; --ink: #e7edf5; --muted: #9aa8ba; --line: #2a3a52;
+  --accent: #86d0ef; --accent-ink: #0f1724; --soft: #1f3448; --tan-soft: #3a2f24;
+  --pay: #86d0ef; --pay-ink: #0f1724; --warn: #f0a44b; --warn-bg: #3a2c12; --ok: #4fc28c; --ok-bg: #173225; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+.paybar {
+  display: none; position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
+  background: var(--pay); color: var(--pay-ink); align-items: center; justify-content: space-between; gap: 12px;
+  padding: 10px max(16px, env(safe-area-inset-right, 0px)) calc(10px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+  box-shadow: 0 -4px 16px rgba(15, 30, 43, 0.18);
+}
+.paybar .pk { font-size: 0.7rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.85; margin: 0; }
+.paybar .pv { font-family: var(--mono); font-weight: 700; font-size: 1.2rem; margin: 0; font-variant-numeric: tabular-nums; }
+.paybar button { font: inherit; font-weight: 700; font-size: 0.9rem; border: 0; border-radius: 8px; padding: 10px 14px; background: var(--tan); color: #1b2b3a; cursor: pointer; flex: none; }
+@media (max-width: 760px) {
+  .paybar { display: flex; }
+  body { padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px)); }
+  .brand img { width: 56px; height: 56px; }
+  header h1 { font-size: 1.35rem; }
+}
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 15px; line-height: 1.45;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 28px 40px;
+}
+.wrap { max-width: 980px; margin: 0 auto; display: grid; gap: 22px; }
+header { display: grid; gap: 14px; }
+.brand { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.brand img { width: 76px; height: 76px; border-radius: 12px; background: #fff; border: 1px solid var(--line); flex: none; }
+.brand .kicker { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.18em; color: var(--tan); margin: 0; text-transform: uppercase; }
+header h1 { font-family: var(--display); font-weight: 800; font-size: 1.6rem; margin: 2px 0 0; color: var(--accent); letter-spacing: -0.01em; text-wrap: balance; }
+header p { margin: 2px 0 0; color: var(--muted); }
+.stripes { display: flex; gap: 6px; height: 6px; }
+.stripes i { display: block; transform: skewX(-35deg); }
+.stripes i:nth-child(1) { flex: 2; background: var(--tan); }
+.stripes i:nth-child(2) { flex: 2; background: var(--sky); }
+.stripes i:nth-child(3) { flex: 6; background: #165378; }
+.grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: 22px; align-items: start; }
+@media (max-width: 760px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 20px; display: grid; gap: 16px; min-width: 0; }
+.field { display: grid; gap: 6px; }
+label, .lbl { font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+input[type="text"], input[type="date"] {
+  width: 100%; font: inherit; font-size: 1rem; color: var(--ink); background: var(--bg);
+  border: 1px solid var(--line); border-radius: 7px; padding: 10px 12px;
+}
+input.num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+input:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.seg { display: inline-flex; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 3px; gap: 3px; flex-wrap: wrap; }
+.seg button {
+  font: inherit; font-weight: 600; font-size: 0.9rem; border: 0; background: transparent; color: var(--muted);
+  padding: 7px 14px; border-radius: 6px; cursor: pointer;
+}
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+.row2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; }
+.rate-line { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 0.82rem; color: var(--muted); }
+.chip { display: inline-flex; align-items: center; gap: 6px; font-size: 0.75rem; font-weight: 600; padding: 3px 9px; border-radius: 999px; }
+.chip.ok { background: var(--ok-bg); color: var(--ok); }
+.chip.warn { background: var(--warn-bg); color: var(--warn); }
+.linkbtn { font: inherit; font-size: 0.82rem; background: none; border: 0; color: var(--accent); cursor: pointer; padding: 0; text-decoration: underline; }
+.hint { font-size: 0.8rem; color: var(--muted); margin: 0; }
+
+/* Result: mirrors the agency's spreadsheet */
+.sheet { border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.sheet table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.sheet td { border-bottom: 1px solid var(--line); padding: 9px 12px; vertical-align: middle; }
+.sheet tr:last-child td { border-bottom: 0; }
+.sheet td.k { text-align: right; font-weight: 600; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); width: 44%; }
+.sheet td.cur { width: 46px; color: var(--muted); font-family: var(--mono); font-size: 0.85rem; padding-right: 0; }
+.sheet td.v { text-align: right; font-family: var(--mono); font-size: 1rem; }
+.sheet .hotel td.v { font-family: var(--display); font-weight: 700; font-size: 1.05rem; text-align: center; }
+.sheet .mark td { background: var(--soft); }
+.sheet .mark td.v { font-weight: 600; color: var(--accent); }
+.sheet .ret td.k { background: var(--tan-soft); color: var(--ink); }
+.sheet .hotel td.v { color: var(--accent); }
+.sheet tr.pay td { background: var(--pay); color: var(--pay-ink); }
+.sheet tr.pay td.k, .sheet tr.pay td.cur, .sheet tr.pay td.v { color: var(--pay-ink); }
+.sheet .pay td.v { font-weight: 700; font-size: 1.25rem; }
+.sheet .pay td { padding-block: 13px; }
+.actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.btn {
+  font: inherit; font-weight: 600; border-radius: 8px; padding: 10px 16px; cursor: pointer;
+  background: var(--accent); color: var(--accent-ink); border: 1px solid var(--accent);
+}
+.btn.ghost { background: transparent; color: var(--accent); }
+.toast { font-size: 0.85rem; color: var(--ok); }
+textarea#copyFallback { width: 100%; min-height: 160px; font-family: var(--mono); font-size: 0.8rem; background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 7px; padding: 8px; }
+.foot { font-size: 0.78rem; color: var(--muted); }
+.imgfb { display: grid; gap: 10px; }
+.imgfb img { width: 100%; border: 1px solid var(--line); border-radius: 6px; background: #fff; }
+.btn { font-family: var(--body); }
+</style>
+
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <img id="logo" alt="One Way Travel Agency" src="../icon-192.png">
+      <div>
+        <p class="kicker">One Way · Departamento de hospedaje</p>
+        <h1>Calculadora de Retenciones</h1>
+        <p>Pago a hoteles con retención de IVA e ISLR, en bolívares a tasa BCV.</p>
+      </div>
+    </div>
+    <div class="stripes" aria-hidden="true"><i></i><i></i><i></i></div>
+  </header>
+
+  <div class="grid">
+    <form class="panel" id="form" autocomplete="off">
+      <div class="field">
+        <label for="hotel">Hotel</label>
+        <input type="text" id="hotel" list="hotelList" value="Plaza Palace" placeholder="Nombre del hotel">
+        <datalist id="hotelList"></datalist>
+      </div>
+
+      <div class="field">
+        <span class="lbl" id="monedaLbl">Moneda del monto</span>
+        <div class="seg" role="group" aria-labelledby="monedaLbl" id="moneda">
+          <button type="button" data-v="USD" aria-pressed="true">Dólar $</button>
+          <button type="button" data-v="EUR" aria-pressed="false">Euro €</button>
+          <button type="button" data-v="VES" aria-pressed="false">Bolívares</button>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="monto" id="montoLbl">Monto (total factura, IVA incluido)</label>
+        <input type="text" id="monto" class="num" inputmode="decimal" value="300,00">
+      </div>
+      <div id="tasaRow">
+        <div class="field" hidden>
+          <label for="fecha">Fecha de la tasa</label>
+          <input type="date" id="fecha" class="num">
+        </div>
+        <div class="field" id="tasaField">
+          <label for="tasa" id="tasaLbl">Tasa BCV USD</label>
+          <input type="text" id="tasa" class="num" inputmode="decimal" value="">
+        </div>
+      </div>
+      <div class="rate-line" id="rateLine">
+        <span class="chip warn" id="rateChip">Cargando tasa BCV…</span>
+        <button type="button" class="linkbtn" id="rateReset" hidden>Usar tasa BCV</button>
+      </div>
+
+      <div class="field">
+        <span class="lbl" id="ivaLbl">Retención de IVA</span>
+        <div class="seg" role="group" aria-labelledby="ivaLbl" id="retIva">
+          <button type="button" data-v="0.75" aria-pressed="true">75%</button>
+          <button type="button" data-v="1" aria-pressed="false">100%</button>
+        </div>
+      </div>
+
+      <div class="row2">
+        <div class="field">
+          <label for="ivaPct">Alícuota IVA %</label>
+          <input type="text" id="ivaPct" class="num" inputmode="decimal" value="16">
+        </div>
+        <div class="field">
+          <label for="islrPct">Retención ISLR %</label>
+          <input type="text" id="islrPct" class="num" inputmode="decimal" value="2">
+        </div>
+      </div>
+      <p class="hint">El monto es el total de la factura con IVA incluido. El ISLR se calcula sobre la base imponible.</p>
+    </form>
+
+    <section class="panel" aria-label="Resultado">
+      <div class="sheet">
+        <table>
+          <tbody>
+            <tr class="hotel"><td class="k">Hotel</td><td colspan="2" class="v" id="oHotel"></td></tr>
+            <tr id="rTasa"><td class="k">Tasa</td><td class="cur"></td><td class="v" id="oTasa"></td></tr>
+            <tr id="rMonto"><td class="k" id="oMontoK">Monto en USD</td><td class="cur" id="oMontoCur">$</td><td class="v" id="oMonto"></td></tr>
+            <tr class="mark"><td class="k">Total factura</td><td class="cur">Bs.S</td><td class="v" id="oTotal"></td></tr>
+            <tr><td class="k">Base</td><td class="cur">Bs.S</td><td class="v" id="oBase"></td></tr>
+            <tr><td class="k" id="oIvaK">IVA</td><td class="cur">Bs.S</td><td class="v" id="oIva"></td></tr>
+            <tr class="ret"><td class="k" id="oIslrK">Ret 2% ISLR</td><td class="cur">Bs.S</td><td class="v" id="oIslr"></td></tr>
+            <tr class="ret"><td class="k" id="oRetIvaK">Ret 75% IVA</td><td class="cur">Bs.S</td><td class="v" id="oRetIva"></td></tr>
+            <tr><td class="k">Suma de retenciones</td><td class="cur">Bs.S</td><td class="v" id="oSuma"></td></tr>
+            <tr class="mark pay"><td class="k">Monto a pagar</td><td class="cur">Bs.S</td><td class="v" id="oPagar"></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="actions">
+        <button type="button" class="btn" id="copyImg">Copiar como imagen</button>
+        <button type="button" class="btn ghost" id="shareImg" hidden>Compartir imagen</button>
+        <button type="button" class="btn ghost" id="copy">Copiar texto</button>
+        <span class="toast" id="toast" role="status"></span>
+      </div>
+      <div id="imgFallback" class="imgfb" hidden>
+        <p class="hint" id="imgHint">Tu navegador no dejó copiar la imagen directamente. Mantén presionada la imagen (o clic derecho → Copiar imagen) para copiarla.</p>
+        <img id="imgPreview" alt="Resumen de retenciones como imagen">
+        <div class="actions"><button type="button" class="btn ghost" id="saveImg" hidden>Guardar imagen</button></div>
+      </div>
+      <textarea id="copyFallback" readonly hidden aria-label="Resumen para copiar"></textarea>
+      <div class="paybar" aria-label="Monto a pagar">
+        <div><p class="pk">Monto a pagar</p><p class="pv">Bs.S <span id="pbVal"></span></p></div>
+        <button type="button" id="pbCopy">Copiar imagen</button>
+      </div>
+      <p class="foot" id="foot">La tasa BCV se actualiza sola cada día hábil desde la página oficial del BCV. Si la factura usa otra tasa, escríbela encima; con “Usar tasa BCV” vuelves a la oficial.</p>
+    </section>
+  </div>
+</div>
+
+<script>
+(function () {
+  const $ = (id) => document.getElementById(id);
+  const state = { moneda: "USD", retIva: 0.75, bcv: null, tasaManual: false };
+
+  // ---- number helpers (formato venezolano: 1.234,56) ----
+  function parseNum(s) {
+    s = String(s || "").trim().replace(/[^\d.,-]/g, "");
+    if (!s) return NaN;
+    if (s.includes(",")) s = s.replace(/\./g, "").replace(",", ".");
+    else {
+      const parts = s.split(".");
+      if (parts.length > 2) s = parts.join("");
+      else if (parts.length === 2 && parts[1].length === 3) s = parts.join("");
+    }
+    return parseFloat(s);
+  }
+  function r2(x) { return Math.round(x * 100 + (x >= 0 ? 1e-7 : -1e-7)) / 100; }
+  function fmt(x) {
+    if (!isFinite(x)) return "—";
+    const neg = x < 0; x = Math.abs(x);
+    const [i, d] = x.toFixed(2).split(".");
+    return (neg ? "-" : "") + i.replace(/\B(?=(\d{3})+(?!\d))/g, ".") + "," + d;
+  }
+  function fmtPct(p) { return String(r2(p * 100)).replace(".", ","); }
+
+  // ---- storage (solo conveniencia local) ----
+  function load(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } }
+  function save(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+
+  let hoteles = load("ow_hoteles", []);
+  function renderHotelList() {
+    $("hotelList").innerHTML = "";
+    hoteles.forEach((h) => { const o = document.createElement("option"); o.value = h; $("hotelList").appendChild(o); });
+  }
+  renderHotelList();
+  $("hotel").addEventListener("change", () => {
+    const h = $("hotel").value.trim();
+    if (!h) return;
+    hoteles = [h, ...hoteles.filter((x) => x.toLowerCase() !== h.toLowerCase())].slice(0, 30);
+    save("ow_hoteles", hoteles); renderHotelList();
+  });
+
+  // ---- segmented controls ----
+  function seg(id, key, cast) {
+    $(id).addEventListener("click", (e) => {
+      const b = e.target.closest("button"); if (!b) return;
+      [...$(id).children].forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+      state[key] = cast(b.dataset.v);
+      if (key === "moneda") { state.tasaManual = false; applyBcv(); }
+      calc();
+    });
+  }
+  seg("moneda", "moneda", String);
+  seg("retIva", "retIva", Number);
+
+  // ---- BCV rate ----
+  function fechaTxt(iso) {
+    if (!iso) return "";
+    const [y, m, d] = iso.slice(0, 10).split("-");
+    return d + "/" + m + "/" + y;
+  }
+  // historial: fecha valor (AAAA-MM-DD) -> {usd, eur}
+  state.hist = {};
+  state.found = null;
+  function hoyCaracas() {
+    try { return new Date().toLocaleDateString("en-CA", { timeZone: "America/Caracas" }); }
+    catch (e) { return new Date().toISOString().slice(0, 10); }
+  }
+  $("fecha").value = hoyCaracas();
+  // La tasa que rige una fecha es la última publicada con fecha valor igual o anterior.
+  function rateFor(date, cur) {
+    const key = cur === "EUR" ? "eur" : "usd";
+    const fechas = Object.keys(state.hist).filter((k) => k <= date).sort().reverse();
+    if (!fechas.length) return null;
+    const fv = fechas[0];
+    const v = r2(Number(state.hist[fv][key]));
+    return { fecha_valor: fv, valor: isFinite(v) && v > 0 ? v : null };
+  }
+  function applyBcv() {
+    const chip = $("rateChip");
+    const isVes = state.moneda === "VES";
+    $("tasaRow").hidden = isVes;
+    $("rateLine").hidden = isVes;
+    $("tasaLbl").textContent = "Tasa BCV " + state.moneda;
+    if (isVes) return;
+    const fecha = $("fecha").value || hoyCaracas();
+    const r = rateFor(fecha, state.moneda);
+    state.found = r && r.valor ? r : null;
+    const v = state.found ? state.found.valor : null;
+    if (!state.tasaManual && v) $("tasa").value = fmt(v);
+    $("rateReset").hidden = !(state.tasaManual && v);
+    if (state.tasaManual) {
+      chip.className = "chip warn"; chip.textContent = "Tasa escrita a mano";
+    } else if (v) {
+      const fv = state.found.fecha_valor;
+      const exacta = fv === fecha;
+      const esHoy = fecha === hoyCaracas();
+      const days = (new Date(fecha + "T12:00:00-04:00") - new Date(fv + "T12:00:00-04:00")) / 864e5;
+      const old = esHoy && days > 4;
+      chip.className = "chip " + (old ? "warn" : "ok");
+      chip.textContent = "BCV · fecha valor " + fechaTxt(fv) +
+        (exacta ? "" : " · vigente para el " + fechaTxt(fecha)) +
+        (old ? " · revisa si hay tasa nueva" : "");
+    } else if (r && !r.valor) {
+      $("tasa").value = "";
+      chip.className = "chip warn";
+      chip.textContent = "No hay tasa " + state.moneda + " guardada para el " + fechaTxt(r.fecha_valor) + ": escríbela a mano";
+    } else {
+      if (!state.tasaManual) $("tasa").value = "";
+      chip.className = "chip warn";
+      chip.textContent = state.bcvTried ? "Sin tasa BCV para esa fecha: escríbela a mano" : "Cargando tasa BCV…";
+    }
+  }
+  $("tasa").addEventListener("input", () => { state.tasaManual = true; applyBcv(); calc(); });
+  $("rateReset").addEventListener("click", () => { state.tasaManual = false; applyBcv(); calc(); });
+  $("fecha").addEventListener("change", () => { state.tasaManual = false; applyBcv(); calc(); });
+
+  async function cargarTasas() {
+    try {
+      const r = await fetch("tasa.json?t=" + Date.now(), { cache: "no-store" });
+      if (!r.ok) throw new Error(r.status);
+      const d = await r.json();
+      const m = Object.assign({}, d.historial || {});
+      if (d.fecha_valor) m[d.fecha_valor] = Object.assign({}, m[d.fecha_valor] || {}, { usd: d.usd, eur: d.eur });
+      state.hist = m;
+      try { localStorage.setItem("ow_tasas", JSON.stringify(m)); } catch (e) {}
+    } catch (e) {
+      // sin conexión: usa la última tasa guardada en este teléfono
+      try { const c = JSON.parse(localStorage.getItem("ow_tasas") || "null"); if (c) state.hist = c; } catch (e2) {}
+    }
+    state.bcvTried = true; applyBcv(); calc();
+  }
+  cargarTasas();
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") cargarTasas(); });
+  setTimeout(() => { state.bcvTried = true; applyBcv(); }, 11000);
+
+  // ---- cálculo ----
+  let last = null;
+  function calc() {
+    const hotel = $("hotel").value.trim() || "—";
+    const monto = parseNum($("monto").value);
+    const isVes = state.moneda === "VES";
+    const tasa = isVes ? 1 : parseNum($("tasa").value);
+    const iva = parseNum($("ivaPct").value) / 100;
+    const islr = parseNum($("islrPct").value) / 100;
+
+    const total = r2(monto * tasa);
+    const base = r2(total / (1 + iva));
+    const ivaBs = r2(total - base);
+    const retIslr = r2(base * islr);
+    const retIva = r2(ivaBs * state.retIva);
+    const suma = r2(retIslr + retIva);
+    const pagar = r2(total - suma);
+
+    $("oHotel").textContent = hotel;
+    $("rTasa").hidden = isVes; $("rMonto").hidden = isVes;
+    $("oTasa").textContent = fmt(tasa);
+    $("oMontoK").textContent = "Monto en " + state.moneda;
+    $("oMontoCur").textContent = state.moneda === "EUR" ? "€" : "$";
+    $("oMonto").textContent = fmt(monto);
+    $("oTotal").textContent = fmt(total);
+    $("oBase").textContent = fmt(base);
+    $("oIvaK").textContent = "IVA " + fmtPct(iva) + "%";
+    $("oIva").textContent = fmt(ivaBs);
+    $("oIslrK").textContent = "Ret " + fmtPct(islr) + "% ISLR";
+    $("oIslr").textContent = fmt(retIslr);
+    $("oRetIvaK").textContent = "Ret " + fmtPct(state.retIva) + "% IVA";
+    $("oRetIva").textContent = fmt(retIva);
+    $("oSuma").textContent = fmt(suma);
+    $("oPagar").textContent = fmt(pagar);
+    $("pbVal").textContent = fmt(pagar);
+
+    if (typeof prepararImagen === "function") prepararImagen();
+    last = { hotel, isVes, tasa, monto, total, base, ivaBs, retIslr, retIva, suma, pagar, iva, islr };
+  }
+  ["hotel", "monto", "ivaPct", "islrPct"].forEach((id) => $(id).addEventListener("input", calc));
+
+  // ---- copiar ----
+  function resumen() {
+    const l = last; if (!l) return "";
+    const sym = state.moneda === "EUR" ? "€" : "$";
+    const lines = ["HOTEL: " + l.hotel];
+    if (!l.isVes) {
+      lines.push("TASA BCV " + state.moneda + ": " + fmt(l.tasa));
+      lines.push("MONTO EN " + state.moneda + ": " + sym + " " + fmt(l.monto));
+    }
+    lines.push(
+      "TOTAL FACTURA: Bs.S " + fmt(l.total),
+      "BASE: Bs.S " + fmt(l.base),
+      "IVA " + fmtPct(l.iva) + "%: Bs.S " + fmt(l.ivaBs),
+      "RET " + fmtPct(l.islr) + "% ISLR: Bs.S " + fmt(l.retIslr),
+      "RET " + fmtPct(state.retIva) + "% IVA: Bs.S " + fmt(l.retIva),
+      "SUMA DE RETENCIONES: Bs.S " + fmt(l.suma),
+      "MONTO A PAGAR: Bs.S " + fmt(l.pagar)
+    );
+    return lines.join("\n");
+  }
+  $("copy").addEventListener("click", () => {
+    const t = resumen();
+    const done = () => { $("toast").textContent = "Resumen copiado"; setTimeout(() => ($("toast").textContent = ""), 2500); };
+    const fallback = () => {
+      const ta = $("copyFallback"); ta.value = t; ta.hidden = false; ta.focus(); ta.select();
+      $("toast").textContent = "Selecciona y copia el texto";
+    };
+    try {
+      navigator.clipboard.writeText(t).then(done, fallback);
+    } catch (e) { fallback(); }
+  });
+
+  // ---- copiar como imagen ----
+  function rowsForImage() {
+    const l = last; const sym = state.moneda === "EUR" ? "€" : "$";
+    const rows = [{ k: "HOTEL", hotel: l.hotel }];
+    if (!l.isVes) {
+      rows.push({ k: "TASA", c: "", v: fmt(l.tasa) });
+      rows.push({ k: "MONTO EN " + state.moneda, c: sym, v: fmt(l.monto) });
+    }
+    rows.push(
+      { k: "TOTAL FACTURA", c: "Bs.S", v: fmt(l.total), mark: true },
+      { k: "BASE", c: "Bs.S", v: fmt(l.base) },
+      { k: "IVA " + fmtPct(l.iva) + "%", c: "Bs.S", v: fmt(l.ivaBs) },
+      { k: "RET " + fmtPct(l.islr) + "% ISLR", c: "Bs.S", v: fmt(l.retIslr), green: true },
+      { k: "RET " + fmtPct(state.retIva) + "% IVA", c: "Bs.S", v: fmt(l.retIva), green: true },
+      { k: "SUMA DE RETENCIONES", c: "Bs.S", v: fmt(l.suma) },
+      { k: "MONTO A PAGAR", c: "Bs.S", v: fmt(l.pagar), mark: true, big: true }
+    );
+    return rows;
+  }
+  function drawImage() {
+    const rows = rowsForImage();
+    const NAVY = "#165378", SKY = "#86d0ef", TAN = "#d6ad83", SOFT = "#cfe6f4", TANSOFT = "#f1e0cc", INK = "#1b2b3a", LINE = "#9cc9e4";
+    const W = 560, RH = 38, PAD = 16, HEAD = 78, FOOT = 34, S = 2;
+    const H = HEAD + PAD + rows.length * RH + FOOT;
+    const cv = document.createElement("canvas");
+    cv.width = W * S; cv.height = H * S;
+    const g = cv.getContext("2d"); g.scale(S, S);
+    const sans = '"Montserrat", "Segoe UI", Arial, sans-serif';
+    const mono = '"IBM Plex Mono", Menlo, Consolas, monospace';
+    g.fillStyle = "#ffffff"; g.fillRect(0, 0, W, H);
+    // encabezado de marca
+    const logo = $("logo");
+    if (logo && logo.complete && logo.naturalWidth) g.drawImage(logo, PAD - 4, 6, 66, 66);
+    g.textBaseline = "alphabetic"; g.textAlign = "left";
+    g.fillStyle = TAN; g.font = "700 10px " + sans; g.fillText("ONE WAY TRAVEL AGENCY", PAD + 72, 32);
+    g.fillStyle = NAVY; g.font = "800 20px " + sans; g.fillText("Pago con retenciones", PAD + 72, 56);
+    // franjas tan / cielo / azul
+    const sy = HEAD - 10, sw = W - PAD * 2;
+    [[0, 0.2, TAN], [0.22, 0.42, SKY], [0.44, 1, NAVY]].forEach(([a, b, c]) => {
+      g.fillStyle = c; g.beginPath();
+      const xa = PAD + sw * a, xb = PAD + sw * b;
+      g.moveTo(xa + 4, sy); g.lineTo(xb + 4, sy); g.lineTo(xb, sy + 6); g.lineTo(xa, sy + 6); g.closePath(); g.fill();
+    });
+    const x0 = PAD, x1 = 250, x3 = W - PAD;
+    rows.forEach((r, i) => {
+      const y = HEAD + PAD - 6 + i * RH;
+      const pay = r.big;
+      if (pay) { g.fillStyle = NAVY; g.fillRect(x0, y, x3 - x0, RH); }
+      else if (r.mark) { g.fillStyle = SOFT; g.fillRect(x1, y, x3 - x1, RH); }
+      if (r.green) { g.fillStyle = TANSOFT; g.fillRect(x0, y, x1 - x0, RH); }
+      g.strokeStyle = LINE; g.lineWidth = 1;
+      g.strokeRect(x0 + 0.5, y + 0.5, x3 - x0 - 1, RH);
+      g.beginPath(); g.moveTo(x1 + 0.5, y); g.lineTo(x1 + 0.5, y + RH); g.stroke();
+      g.textBaseline = "middle";
+      const cy = y + RH / 2 + 1;
+      g.fillStyle = pay ? "#ffffff" : INK; g.font = "600 12px " + sans; g.textAlign = "right";
+      g.fillText(r.k, x1 - 10, cy);
+      if (r.hotel !== undefined) {
+        g.textAlign = "center"; g.font = "700 16px " + sans; g.fillStyle = NAVY;
+        g.fillText(r.hotel, (x1 + x3) / 2, cy);
+      } else {
+        g.textAlign = "left"; g.font = "500 13px " + mono; g.fillStyle = pay ? "#ffffff" : "#5e6b7d";
+        g.fillText(r.c, x1 + 10, cy);
+        g.textAlign = "right"; g.font = (pay ? "700 17px " : r.mark ? "600 15px " : "500 15px ") + mono;
+        g.fillStyle = pay ? "#ffffff" : r.mark ? NAVY : INK;
+        g.fillText(r.v, x3 - 10, cy);
+      }
+    });
+    const hoy = new Date();
+    const fv = last.isVes ? "" : state.tasaManual
+      ? " · Tasa del " + fechaTxt($("fecha").value)
+      : state.found ? " · Tasa BCV fecha valor " + fechaTxt(state.found.fecha_valor) : "";
+    g.fillStyle = "#5e6b7d"; g.font = "500 11px " + sans; g.textAlign = "left"; g.textBaseline = "middle";
+    g.fillText("@onewaytraveling · " + hoy.toLocaleDateString("es-VE") + fv, x0, H - FOOT / 2);
+    return cv;
+  }
+  function canvasBlob(cv) { return new Promise((res, rej) => cv.toBlob((b) => (b ? res(b) : rej(new Error("png"))), "image/png")); }
+  let lastBlob = null;
+  async function showImgFallback(cv) {
+    $("imgPreview").src = cv.toDataURL("image/png");
+    $("imgFallback").hidden = false;
+    try { $("imgFallback").scrollIntoView({ behavior: "smooth", block: "center" }); } catch (e) {}
+    try { lastBlob = await canvasBlob(cv); } catch (e) {}
+    $("saveImg").hidden = !lastBlob;
+    $("toast").textContent = "";
+  }
+  $("copyImg").addEventListener("click", () => {
+    $("imgFallback").hidden = true; $("copyFallback").hidden = true;
+    const cv = drawImage();
+    try {
+      if (!navigator.clipboard || !window.ClipboardItem) throw new Error("no clipboard");
+      const item = new ClipboardItem({ "image/png": canvasBlob(cv) });
+      navigator.clipboard.write([item]).then(() => {
+        $("toast").textContent = "Imagen copiada. Pégala en WhatsApp o en el correo.";
+        setTimeout(() => ($("toast").textContent = ""), 3000);
+      }, () => showImgFallback(cv));
+    } catch (e) { showImgFallback(cv); }
+  });
+  $("saveImg").addEventListener("click", async () => {
+    if (!lastBlob) return;
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(lastBlob); a.download = nombreArchivo();
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  });
+
+  function nombreArchivo() {
+    return "retenciones-" + ($("hotel").value.trim() || "hotel").replace(/[^\w-]+/g, "-").toLowerCase() + ".png";
+  }
+  // La imagen se prepara apenas cambian los datos, para que Compartir abra al instante.
+  let shareBlob = null, prepT = null;
+  function prepararImagen() {
+    clearTimeout(prepT);
+    prepT = setTimeout(() => { canvasBlob(drawImage()).then((b) => { shareBlob = b; }, () => {}); }, 250);
+  }
+  const puedeCompartir = (() => {
+    try { return !!(navigator.canShare && navigator.canShare({ files: [new File([new Blob(["x"], { type: "image/png" })], "x.png", { type: "image/png" })] })); }
+    catch (e) { return false; }
+  })();
+  function compartir() {
+    if (!shareBlob) { $("copyImg").click(); return; }
+    const f = new File([shareBlob], nombreArchivo(), { type: "image/png" });
+    navigator.share({ files: [f] }).catch((err) => { if (err && err.name !== "AbortError") $("copyImg").click(); });
+  }
+  if (puedeCompartir) {
+    $("shareImg").hidden = false;
+    $("pbCopy").textContent = "Compartir";
+  }
+  $("shareImg").addEventListener("click", compartir);
+  $("pbCopy").addEventListener("click", () => (puedeCompartir ? compartir() : $("copyImg").click()));
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(prepararImagen);
+  $("form").addEventListener("submit", (e) => e.preventDefault());
+  applyBcv(); calc();
+})();
+</script>
+
+</body>
+</html>
