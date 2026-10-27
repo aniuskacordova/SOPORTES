@@ -1,0 +1,114 @@
+name: Tasa BCV diaria
+
+on:
+  schedule:
+    # Hora UTC. 11:37 y 21:37 UTC = 7:37 am y 5:37 pm en Caracas, de lunes a viernes;
+    # 23:37 UTC = 7:37 pm, por si el BCV publica tarde.
+    - cron: "37 11,21,23 * * 1-5"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  actualizar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install requests
+      - name: Buscar tasa BCV
+        run: |
+          cat > /tmp/tasa_bcv.py <<'PYEOF'
+          """Actualiza retenciones/tasa.json con la tasa oficial del BCV (dólar y euro).
+
+          Fuente principal: bcv.org.ve. Respaldo: ve.dolarapi.com (que replica la tasa oficial).
+          Solo escribe si encuentra una tasa válida; si falla todo, deja el archivo como estaba.
+          """
+          import json, re, sys, datetime, pathlib
+          import requests, urllib3
+
+          urllib3.disable_warnings()
+          RUTA = pathlib.Path("retenciones") / "tasa.json"
+          UA = {"User-Agent": "Mozilla/5.0 (OneWay retenciones)"}
+          CARACAS = datetime.timezone(datetime.timedelta(hours=-4))
+
+
+          def num(txt):
+              txt = txt.strip().replace(" ", "")
+              if "," in txt:
+                  txt = txt.replace(".", "").replace(",", ".")
+              return round(float(txt), 4)
+
+
+          def desde_bcv():
+              html = requests.get("https://www.bcv.org.ve/", headers=UA, verify=False, timeout=60).text
+              def tasa(div_id):
+                  m = re.search(r'id="%s".*?<strong>\s*([\d.,]+)\s*</strong>' % div_id, html, re.S)
+                  return num(m.group(1)) if m else None
+              fv = re.search(r'Fecha Valor.*?content="(\d{4}-\d{2}-\d{2})', html, re.S) or \
+                   re.search(r'date-display-single[^>]*content="(\d{4}-\d{2}-\d{2})', html)
+              usd, eur = tasa("dolar"), tasa("euro")
+              if not (usd and eur and fv):
+                  raise ValueError("no se encontró la tasa en bcv.org.ve")
+              return {"usd": usd, "eur": eur, "fecha_valor": fv.group(1), "fuente": "bcv.org.ve"}
+
+
+          def desde_dolarapi():
+              u = requests.get("https://ve.dolarapi.com/v1/dolares/oficial", headers=UA, timeout=30).json()
+              e = requests.get("https://ve.dolarapi.com/v1/euros/oficial", headers=UA, timeout=30).json()
+              fecha = (u.get("fechaActualizacion") or "")[:10]
+              usd, eur = float(u["promedio"]), float(e["promedio"])
+              if not (usd > 0 and eur > 0 and fecha):
+                  raise ValueError("respuesta incompleta de dolarapi")
+              return {"usd": round(usd, 4), "eur": round(eur, 4), "fecha_valor": fecha, "fuente": "ve.dolarapi.com (oficial BCV)"}
+
+
+          def main():
+              nuevo, errores = None, []
+              for fuente in (desde_bcv, desde_dolarapi):
+                  try:
+                      nuevo = fuente()
+                      break
+                  except Exception as ex:  # noqa: BLE001
+                      errores.append(f"{fuente.__name__}: {ex}")
+              if not nuevo:
+                  print("Sin tasa nueva:", *errores, sep="\n  ")
+                  return 0
+              datos = json.loads(RUTA.read_text(encoding="utf-8")) if RUTA.exists() else {}
+              hist = datos.get("historial", {})
+              previo = hist.get(nuevo["fecha_valor"], {})
+              if previo.get("usd") == nuevo["usd"] and previo.get("eur") == nuevo["eur"] and datos.get("fecha_valor", "") >= nuevo["fecha_valor"]:
+                  print("Sin cambios:", nuevo)
+                  return 0
+              hist[nuevo["fecha_valor"]] = {"usd": nuevo["usd"], "eur": nuevo["eur"]}
+              ultima = max(hist)
+              datos.update(hist[ultima])
+              datos.update({
+                  "fecha_valor": ultima,
+                  "fuente": nuevo["fuente"],
+                  "actualizado": datetime.datetime.now(CARACAS).isoformat(timespec="minutes"),
+                  "historial": dict(sorted(hist.items())),
+              })
+              RUTA.write_text(json.dumps(datos, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
+              print("Tasa guardada:", nuevo)
+              return 0
+
+
+          if __name__ == "__main__":
+              sys.exit(main())
+          PYEOF
+          python /tmp/tasa_bcv.py
+      - name: Guardar si cambió
+        run: |
+          if ! git diff --quiet retenciones/tasa.json; then
+            git config user.name "tasa-bcv-bot"
+            git config user.email "actions@users.noreply.github.com"
+            git add retenciones/tasa.json
+            git commit -m "Tasa BCV $(date -u +%F)"
+            git push
+          else
+            echo "Sin cambios en la tasa"
+          fi
