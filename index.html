@@ -220,7 +220,7 @@ textarea:focus,input:focus,select:focus,button:focus-visible{outline:2px solid v
     <input id="fAgent">
     <div id="guests"></div>
     <div class="btns"><button class="btn ghost small" id="btnAddGuest">Agregar huésped</button></div>
-    <div class="mode" id="modeBox"><label><input type="radio" name="mode" value="separate" checked> Un soporte por huésped</label><label><input type="radio" name="mode" value="together"> Todos en un mismo soporte</label></div>
+    <div class="mode" id="modeBox"><label><input type="radio" name="mode" value="separate" checked> Un soporte por huésped</label><label><input type="radio" name="mode" value="together"> Juntos por habitación</label></div>
 
     <label for="fHotel">Hotel</label>
     <input id="fHotel" autocomplete="off" list="hotelOptions">
@@ -342,7 +342,8 @@ function parseRequest(text){
   const lines=text.split(/\r?\n/).map(l=>l.trim().replace(/^[*\-•·▪►✓]+\s*/,"").replace(/^\d{1,2}[.)]\s+/,"").trim()).filter(Boolean);
   const out={hotel:"",guests:[],in:"",out:"",meal:"",room:"",cat:"",extras:[],shared:false};
   let cur=null; const ensure=()=>{if(!cur){cur={nombre:"",ci:"",tel:""};out.guests.push(cur)}return cur};
-  const addName=(n,ci)=>{cur={nombre:cleanName(n).toUpperCase(),ci:ci||"",tel:""};out.guests.push(cur)};
+  let grp=null, grpRoom="", grpLoc="", nGrp=0; const roomHeads=[];
+  const addName=(n,ci)=>{cur={nombre:cleanName(n).toUpperCase(),ci:ci||"",tel:"",loc:grp!==null?grpLoc:"",room:grp!==null?grpRoom:""};if(grp!==null)cur.grp=grp;out.guests.push(cur)};
   for(let li=0;li<lines.length;li++){
     let line=lines[li]; const low=norm(line); let r;
     if(/^solicitud/.test(low)) continue;
@@ -353,11 +354,20 @@ function parseRequest(text){
     }
     if(r=line.match(RX_IN)){
       const d=parseDate(r[2]);
-      if(cur){ if(cur.in){const c={nombre:cur.nombre,ci:cur.ci,tel:cur.tel};out.guests.push(c);cur=c} cur.in=d; } else out.in=d;
+      if(cur){ if(cur.in){const c={...cur,loc:"",in:"",out:""};out.guests.push(c);cur=c} cur.in=d; } else out.in=d;
       continue}
     if(r=line.match(RX_OUT)){
       if(cur){cur.out=parseDate(r[2],fromIso(cur.in||out.in))} else out.out=parseDate(r[2],fromIso(out.in));
       continue}
+    if(r=line.match(/^(localizador(?:es)?|loc|locator|c[oó]d(?:igo)?\.?\s*(?:de\s*)?reserva|n(?:ro|[°º])?\.?\s*(?:de\s*)?reserva|confirmaci[oó]n|reserva\s*(?:n(?:ro|[°º])?\.?|#)?)\b\s*[:#.\-]?\s*([A-Za-z0-9][A-Za-z0-9\-\/ ]{2,})$/i)){
+      const v=r[2].trim();
+      if(/\d/.test(v)){
+        if(grp!==null){grpLoc=v;out.guests.filter(g=>g.grp===grp).forEach(g=>g.loc=v)}
+        else if(cur){ if(cur.loc&&cur.in){const c={...cur,loc:v,in:"",out:""};out.guests.push(c);cur=c} else cur.loc=v; }
+        else out.loc=v;
+        continue;
+      }
+    }
     const lab=line.match(/^(hu[eé]sped(?:es)?|nombres?(?:\s+y\s+apellidos?)?|pasajer[oa]s?|cliente|titular)\s*\d*\s*[:\-–]\s*(.+)$/i);
     if(lab) line=lab[2].trim();
     if(r=line.match(/^(.+?)[\s,\-–]+(?:c\.?\s?i\.?|c[eé]dula|ci|pasaporte|pasap\.?|pass(?:port)?|pp|dni)\s*[:#.]?\s*([VvEe]?[-\s]?[A-Za-z]{0,3}\d[\d.\-]{4,})\s*$/i)){
@@ -369,7 +379,9 @@ function parseRequest(text){
     if(/\b(comidas?|desayunos?|almuerzos?|cenas?|todo incluido|alimentaci\w*|pension|full board)\b/.test(low)){
       let v=line.replace(/[.\s]+$/,""); out.meal=v.charAt(0).toUpperCase()+v.slice(1).toLowerCase(); continue;
     }
-    if(r=line.match(/^\s*(habitaci[oó]n|hab)\b\.?\s*:?\s*(.+)$/i)){out.room=r[2].trim();continue}
+    if(r=line.match(/^\s*(habitaci[oó]n(?:es)?|hab)\b\.?\s*:?\s*(.+)$/i)){
+      const v=r[2].trim().replace(/[.:]+$/,"").toUpperCase(); roomHeads.push(v);
+      grp=nGrp++; grpRoom=v; grpLoc=""; cur=null; continue}
     if(/\bestrellas?\b/.test(low)){out.cat=line.replace(/^\s*categor[ií]a\s*:?\s*/i,"").toUpperCase();continue}
     if(r=line.match(RX_PASS)){const g=ensure(); if(g.ci){cur=null;ensure().ci=r[2]} else g.ci=r[2]; continue}
     const digits=line.replace(/\D/g,"");
@@ -391,6 +403,16 @@ function parseRequest(text){
     if(isName(line)||(lab&&isName(line,true))||(isIdLine(lines[li+1])&&isName(line,true))){addName(line);continue}
     out.extras.push(line);
   }
+  out.loc=out.loc||"";
+  if(roomHeads.length===1){out.room=roomHeads[0];out.guests.forEach(g=>{delete g.grp;g.room=""})}
+  out.groups=roomHeads.length>1&&new Set(out.guests.map(g=>g.grp).filter(x=>x!==undefined)).size>1;
+  if(!out.groups) out.guests.forEach(g=>delete g.grp);
+  const locs=[...new Set(out.guests.map(g=>g.loc||""))];
+  if(locs.length===1){ if(locs[0]) out.loc=locs[0]; out.guests.forEach(g=>g.loc=""); out.diffLoc=false; }
+  else { out.diffLoc=true; out.guests.forEach(g=>{if(!g.loc)g.loc=out.loc}); }
+  const rms=[...new Set(out.guests.map(g=>g.room||""))];
+  if(!out.groups&&rms.length===1){ if(rms[0]) out.room=rms[0]; out.guests.forEach(g=>g.room=""); out.diffRoom=false; }
+  else out.diffRoom=out.groups||rms.length>1;
   const pairs=[...new Set(out.guests.filter(g=>g.in||g.out).map(g=>(g.in||"")+"|"+(g.out||"")))];
   if(pairs.length===1&&!out.in&&!out.out){[out.in,out.out]=pairs[0].split("|");out.guests.forEach(g=>{delete g.in;delete g.out});}
   out.diffDates=pairs.length>1||(pairs.length===1&&(out.in||out.out)&&pairs[0]!==out.in+"|"+out.out);
@@ -453,7 +475,10 @@ function renderGuests(){
       <div class="row"><div><label>Cédula</label><input data-k="ci" value="${esc(g.ci)}"></div><div><label>Teléfono</label><input data-k="tel" value="${esc(g.tel)}"></div></div>
       ${(state.guests.length>1&&!state.sameDates)?`<div class="row"><div><label>Check-in</label><input type="date" data-k="in" value="${esc(g.in||"")}"></div><div><label>Check-out</label><input type="date" data-k="out" value="${esc(g.out||"")}"></div></div>`:""}
       ${(state.guests.length>1&&(!state.sameLoc||!state.sameRoom))?`<div class="row">${!state.sameLoc?`<div><label>Localizador</label><input data-k="loc" value="${esc(g.loc||"")}"></div>`:""}${!state.sameRoom?`<div><label>Habitación</label><input data-k="room" list="roomOptions" value="${esc(g.room||"")}"></div>`:""}</div>`:""}`;
-    div.querySelectorAll("input").forEach(inp=>inp.addEventListener("input",()=>{g[inp.dataset.k]=inp.value;render()}));
+    div.querySelectorAll("input").forEach(inp=>inp.addEventListener("input",()=>{
+      const k=inp.dataset.k; g[k]=inp.value;
+      if((k==="loc"||k==="room")&&g.grp!==undefined) state.guests.forEach((o,j)=>{if(o!==g&&o.grp===g.grp){o[k]=inp.value;const el=box.children[j]&&box.children[j].querySelector(`input[data-k="${k}"]`);if(el)el.value=inp.value}});
+      render()}));
     const x=div.querySelector(".x"); if(x) x.onclick=()=>{state.guests.splice(i,1);renderGuests();render()};
     box.appendChild(div);
   });
@@ -483,14 +508,14 @@ $("btnParse").onclick=()=>{
   const h=p.hotel?findHotel(p.hotel):null;
   const obs=[];
   state={...blank(),agent:state.agent,tpl:state.tpl,meal:mealPlan(p.meal),hotel:h?h.nombre:p.hotel,addr:h?h.direccion||"":"",
-    mode:p.shared?"together":"separate",sameLoc:state.sameLoc,sameRoom:state.sameRoom,sameDates:!p.diffDates,guests:p.guests.length?p.guests:[blankGuest()],in:p.in,out:p.out,room:p.room,cat:p.cat,obs:obs.join("\n")};
+    mode:(p.shared||p.groups)?"together":"separate",sameLoc:!p.diffLoc,sameRoom:!p.diffRoom,sameDates:!p.diffDates,guests:p.guests.length?p.guests:[blankGuest()],in:p.in,out:p.out,loc:p.loc,room:p.room,cat:p.cat,obs:obs.join("\n")};
   fillForm();
   const missing=[];
   if(!state.hotel)missing.push("hotel"); if(!state.guests[0].nombre)missing.push("nombre del huésped");
   if(state.sameDates){if(!state.in)missing.push("check-in"); if(!state.out)missing.push("check-out");}
   else if(state.guests.some(g=>!g.in||!g.out)) missing.push("fechas de algún huésped");
   const falt=[["localizador",state.loc||(!state.sameLoc&&state.guests.length>1)],["categoría",state.cat],["habitación",state.room||(!state.sameRoom&&state.guests.length>1)]].filter(x=>!x[1]).map(x=>x[0]);
-  const extra=" Comidas: "+state.meal+"."+(falt.length?" Completa: "+falt.join(", ")+".":"")+(state.guests.length>1?(p.shared?` ${state.guests.length} huéspedes en la misma habitación: un solo soporte.`:` Detecté ${state.guests.length} reservas: un soporte para cada una${state.sameDates?"":", cada una con sus fechas"}.`):"");
+  const extra=" Comidas: "+state.meal+"."+(falt.length?" Completa: "+falt.join(", ")+".":"")+(p.groups?` ${pageSets().length} habitaciones: un soporte por habitación con sus huéspedes.`:state.guests.length>1?(p.shared?` ${state.guests.length} huéspedes en la misma habitación: un solo soporte.`:` Detecté ${state.guests.length} reservas: un soporte para cada una${state.sameDates?"":", cada una con sus fechas"}.`):"");
   const amb=state.hotel&&!state.addr?hotelMatches(state.hotel):[];
   if(amb.length>1){note.className="note warn";note.textContent=`Hay ${amb.length} hoteles con ese nombre: ${amb.map(h=>h.nombre).join(", ")}. Toca “Usar” en el que corresponda, en el directorio de abajo.`+extra;$("dirFilter").value=state.hotel.replace(/^\s*hotel\s+/i,"");renderDirectory()}
   else if(state.hotel && !state.addr){note.className="note warn";note.textContent=`No tengo la dirección de ${state.hotel}. Toca “Buscar dirección en Google Maps”, copia la dirección y pégala en "Dirección del hotel"; quedará guardada.`+(missing.length?` Falta: ${missing.join(", ")}.`:"")+extra;$("fAddr").focus()}
@@ -700,7 +725,12 @@ function render(){
 function pageSets(){
   const named=state.guests.filter(g=>g.nombre);
   if(state.mode==="separate"&&named.length>1) return named.map(g=>[g]);
-  if(named.length>1&&!state.sameDates){const m=new Map();named.forEach(g=>{const k=(g.in||"")+"|"+(g.out||"");if(!m.has(k))m.set(k,[]);m.get(k).push(g)});return [...m.values()]}
+  if(named.length>1&&(!state.sameDates||!state.sameRoom||!state.sameLoc)){
+    const m=new Map();
+    named.forEach(g=>{
+      const k=[!state.sameDates?(g.in||"")+"|"+(g.out||""):"", g.grp!==undefined?"g"+g.grp:[!state.sameRoom?norm(g.room||""):"", !state.sameLoc?(g.loc||"").trim():""].join("|")].join("#");
+      if(!m.has(k))m.set(k,[]);m.get(k).push(g)});
+    return [...m.values()]}
   return [named.length?named:[blankGuest()]];
 }
 function fitPreview(){
