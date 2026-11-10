@@ -339,13 +339,16 @@ const RX_PASS=/^(pasaporte|pasap\.?|pass(?:port)?|pp|dni|id|nro\.?\s*pasaporte)\
 const ID_LABEL=/^(c\.?i\.?|cedula|ci|v|e|tel|telefono|telf|tlf|cel|celular|movil|whatsapp|wsp|)[:]*$/;
 function isIdLine(l){if(!l)return false;const low=norm(l);const d=l.replace(/\D/g,"");const lab=low.replace(/[\d\s.\-+()]/g,"");return (d.length>=6&&ID_LABEL.test(lab))||RX_PASS.test(l)||RX_IN.test(l)}
 function parseRequest(text){
-  const lines=text.split(/\r?\n/).map(l=>l.trim().replace(/^[*\-•·▪►✓]+\s*/,"").replace(/^\d{1,2}[.)]\s+/,"").trim()).filter(Boolean);
+  const lines=text.split(/\r?\n/).map(l=>l.trim().replace(/^[*\-•·▪►✓]+\s*/,"").replace(/^\d{1,2}[.)]\s+/,"").trim());
+  const nextLine=i=>{for(let j=i+1;j<lines.length;j++) if(lines[j]) return lines[j]; return ""};
   const out={hotel:"",guests:[],in:"",out:"",meal:"",room:"",cat:"",extras:[],shared:false};
   let cur=null; const ensure=()=>{if(!cur){cur={nombre:"",ci:"",tel:""};out.guests.push(cur)}return cur};
   let grp=null, grpRoom="", grpLoc="", nGrp=0; const roomHeads=[];
-  const addName=(n,ci)=>{cur={nombre:cleanName(n).toUpperCase(),ci:ci||"",tel:"",loc:grp!==null?grpLoc:"",room:grp!==null?grpRoom:""};if(grp!==null)cur.grp=grp;out.guests.push(cur)};
+  let blank=false;
+  const splitIfBlank=()=>{ if(blank&&grp!==null&&out.guests.some(g=>g.grp===grp)){grp=nGrp++;grpLoc="";cur=null} blank=false; };
+  const addName=(n,ci)=>{splitIfBlank();cur={nombre:cleanName(n).toUpperCase(),ci:ci||"",tel:"",loc:grp!==null?grpLoc:"",room:grp!==null?grpRoom:""};if(grp!==null)cur.grp=grp;out.guests.push(cur)};
   for(let li=0;li<lines.length;li++){
-    let line=lines[li]; const low=norm(line); let r;
+    let line=lines[li]; if(!line){blank=true;continue} const low=norm(line); let r;
     if(/^solicitud/.test(low)) continue;
     if((r=line.match(/^\s*(hotel|posada|hostal|hospedaje en|alojamiento en)\b\s*:?\s*(.*)$/i))&&(r[1].toLowerCase()==="hotel"||!out.hotel)){
       const word=r[1].toLowerCase(); const rest=r[2].trim();
@@ -362,6 +365,7 @@ function parseRequest(text){
     if(r=line.match(/^(localizador(?:es)?|loc|locator|c[oó]d(?:igo)?\.?\s*(?:de\s*)?reserva|n(?:ro|[°º])?\.?\s*(?:de\s*)?reserva|confirmaci[oó]n|reserva\s*(?:n(?:ro|[°º])?\.?|#)?)\b\s*[:#.\-]?\s*([A-Za-z0-9][A-Za-z0-9\-\/ ]{2,})$/i)){
       const v=r[2].trim();
       if(/\d/.test(v)){
+        splitIfBlank();
         if(grp!==null){grpLoc=v;out.guests.filter(g=>g.grp===grp).forEach(g=>g.loc=v)}
         else if(cur){ if(cur.loc&&cur.in){const c={...cur,loc:v,in:"",out:""};out.guests.push(c);cur=c} else cur.loc=v; }
         else out.loc=v;
@@ -381,7 +385,7 @@ function parseRequest(text){
     }
     if(r=line.match(/^\s*(habitaci[oó]n(?:es)?|hab)\b\.?\s*:?\s*(.+)$/i)){
       const v=r[2].trim().replace(/[.:]+$/,"").toUpperCase(); roomHeads.push(v);
-      grp=nGrp++; grpRoom=v; grpLoc=""; cur=null; continue}
+      grp=nGrp++; grpRoom=v; grpLoc=""; cur=null; blank=false; continue}
     if(/\bestrellas?\b/.test(low)){out.cat=line.replace(/^\s*categor[ií]a\s*:?\s*/i,"").toUpperCase();continue}
     if(r=line.match(RX_PASS)){const g=ensure(); if(g.ci){cur=null;ensure().ci=r[2]} else g.ci=r[2]; continue}
     const digits=line.replace(/\D/g,"");
@@ -400,12 +404,13 @@ function parseRequest(text){
         out.shared=true; continue;
       }
     }
-    if(isName(line)||(lab&&isName(line,true))||(isIdLine(lines[li+1])&&isName(line,true))){addName(line);continue}
+    if(isName(line)||(lab&&isName(line,true))||(isIdLine(nextLine(li))&&isName(line,true))){addName(line);continue}
     out.extras.push(line);
   }
   out.loc=out.loc||"";
-  if(roomHeads.length===1){out.room=roomHeads[0];out.guests.forEach(g=>{delete g.grp;g.room=""})}
-  out.groups=roomHeads.length>1&&new Set(out.guests.map(g=>g.grp).filter(x=>x!==undefined)).size>1;
+  const nG=new Set(out.guests.map(g=>g.grp).filter(x=>x!==undefined)).size;
+  if(roomHeads.length===1&&nG<=1){out.room=roomHeads[0];if(out.guests.filter(g=>g.grp!==undefined).length>1)out.shared=true;out.guests.forEach(g=>{delete g.grp;g.room=""})}
+  out.groups=nG>1;
   if(!out.groups) out.guests.forEach(g=>delete g.grp);
   const locs=[...new Set(out.guests.map(g=>g.loc||""))];
   if(locs.length===1){ if(locs[0]) out.loc=locs[0]; out.guests.forEach(g=>g.loc=""); out.diffLoc=false; }
